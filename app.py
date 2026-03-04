@@ -5,29 +5,47 @@ from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 
-st.set_page_config(page_title="Burn Mortality Predictor", layout="centered")
-st.title("Burn Mortality Predictor (Age, Burn%, Baux)")
+st.title("Burn Mortality Predictor")
 
-uploaded = st.file_uploader("Upload Excel dataset (.xlsx)", type=["xlsx"])
+file = st.file_uploader("Upload burn data Excel", type=["xlsx"])
 
-if uploaded is not None:
-    df = pd.read_excel(uploaded)
+if file is not None:
 
-    # Adjust these column names if your Excel differs
-    # Expected columns: Burn, Age, Outcome
+    df = pd.read_excel(file)
+
+    st.write("Detected columns:", df.columns)
+
+    # rename columns depending on your sheet
+    rename_map = {}
+
+    for c in df.columns:
+        name = c.lower()
+
+        if "burn" in name:
+            rename_map[c] = "Burn"
+
+        if "age" in name:
+            rename_map[c] = "Age"
+
+        if "out" in name:
+            rename_map[c] = "Outcome"
+
+    df = df.rename(columns=rename_map)
+
+    if not {"Burn","Age","Outcome"}.issubset(df.columns):
+        st.error("Required columns not found in Excel")
+        st.stop()
+
     df = df[["Burn","Age","Outcome"]]
 
-    # Remove unknown outcomes
     df = df[df["Outcome"] != "U"]
 
-    # Convert to numeric
     df["Burn"] = pd.to_numeric(df["Burn"], errors="coerce")
     df["Age"] = pd.to_numeric(df["Age"], errors="coerce")
     df["Outcome"] = pd.to_numeric(df["Outcome"], errors="coerce")
 
     df = df.dropna()
 
-    # Compute Baux score
     df["Baux"] = df["Age"] + df["Burn"]
 
     X = df[["Age","Burn","Baux"]]
@@ -42,21 +60,22 @@ if uploaded is not None:
         ("clf", LogisticRegression(max_iter=5000))
     ])
 
-    model.fit(X, y)
+    model.fit(X,y)
 
     st.success(f"Model trained on {len(df)} patients")
 
-    age = st.number_input("Age (years)", 0.0, 120.0)
-    burn = st.slider("Burn % TBSA", 0, 100)
+    age = st.number_input("Age",0,120)
+    burn = st.slider("Burn %",0,100)
 
     if st.button("Predict"):
+
         baux = age + burn
-        patient = pd.DataFrame([[age, burn, baux]], columns=["Age","Burn","Baux"])
 
-        p_survive = model.predict_proba(patient)[0][1]
-        p_die = 1 - p_survive
+        patient = pd.DataFrame([[age,burn,baux]],columns=["Age","Burn","Baux"])
 
-        st.subheader("Prediction")
-        st.write("Baux score:", round(baux,1))
-        st.write("Mortality Risk:", round(p_die*100,2), "%")
-        st.write("Survival Probability:", round(p_survive*100,2), "%")
+        survive = model.predict_proba(patient)[0][1]
+        death = 1 - survive
+
+        st.write("Baux Score:", baux)
+        st.write("Mortality Risk:", round(death*100,2), "%")
+        st.write("Survival Probability:", round(survive*100,2), "%")
