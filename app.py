@@ -8,64 +8,56 @@ from sklearn.linear_model import LogisticRegression
 st.set_page_config(page_title="Burn Mortality Predictor", layout="centered")
 st.title("Burn Mortality Predictor")
 
-uploaded_file = st.file_uploader("Upload burn data Excel (.xlsx)", type=["xlsx"])
+file = st.file_uploader("Upload burn data Excel (.xlsx)", type=["xlsx"])
 
-if uploaded_file is not None:
+if file is not None:
+    # Your sheet has headers on row 3
+    df = pd.read_excel(file, header=2)
 
-    # Read Excel (headers start on row 3 in your sheet)
-    df = pd.read_excel(uploaded_file, header=2)
+    # Force expected column names for this sheet structure
+    df.columns = ["Index","Name","Burn","Age","Sex","DOA","DOD","Outcome"]
 
-    # Rename columns based on known sheet structure
-    df.columns = [
-        "Index",
-        "Name",
-        "Burn",
-        "Age",
-        "Sex",
-        "DOA",
-        "DOD",
-        "Outcome"
-    ]
+    df = df[["Burn","Age","Outcome"]].copy()
 
-    # Keep required variables
-    df = df[["Burn", "Age", "Outcome"]]
+    # Show raw outcome values to verify what exists in the sheet
+    st.write("Raw Outcome values detected:")
+    st.write(df["Outcome"].dropna().unique())
 
-    # Convert Outcome text to numeric
-    df["Outcome"] = df["Outcome"].astype(str).str.lower().str.strip()
+    # Normalize outcome text
+    df["Outcome"] = df["Outcome"].astype(str).str.strip().str.lower()
 
-    df["Outcome"] = df["Outcome"].replace({
-        "alive":1,
-        "survived":1,
-        "a":1,
-        "1":1,
+    mapping = {
+        "alive":1,"survived":1,"survive":1,"a":1,"1":1,"yes":1,
+        "dead":0,"died":0,"death":0,"d":0,"0":0,"no":0
+    }
 
-        "dead":0,
-        "d":0,
-        "0":0
-    })
+    df["Outcome"] = df["Outcome"].replace(mapping)
 
     # Remove unknown outcomes
-    df = df[df["Outcome"] != "u"]
+    df = df[~df["Outcome"].isin(["u","unknown","nan"])]
 
-    # Convert numeric columns
+    df["Outcome"] = pd.to_numeric(df["Outcome"], errors="coerce")
     df["Burn"] = pd.to_numeric(df["Burn"], errors="coerce")
     df["Age"] = pd.to_numeric(df["Age"], errors="coerce")
-    df["Outcome"] = pd.to_numeric(df["Outcome"], errors="coerce")
 
     df = df.dropna()
 
-    # Create Baux score
+    # Compute Baux score
     df["Baux"] = df["Age"] + df["Burn"]
 
-    st.write("Outcome distribution:")
+    st.write("Outcome distribution after cleaning:")
     st.write(df["Outcome"].value_counts())
 
-    # Train model
-    X = df[["Age", "Burn", "Baux"]]
+    # Stop if only one class remains
+    if df["Outcome"].nunique() < 2:
+        st.error("Dataset contains only one outcome class after cleaning. Model cannot train.")
+        st.stop()
+
+    X = df[["Age","Burn","Baux"]]
     y = df["Outcome"]
 
     preprocess = ColumnTransformer(
-        [("scale", StandardScaler(), ["Age", "Burn", "Baux"])]
+        [("scale", StandardScaler(), ["Age","Burn","Baux"])]
     )
 
     model = Pipeline([
@@ -77,24 +69,16 @@ if uploaded_file is not None:
 
     st.success(f"Model trained on {len(df)} patients")
 
-    # Prediction interface
-    age = st.number_input("Age (years)", 0, 120)
+    age = st.number_input("Age", 0, 120)
     burn = st.slider("Burn % TBSA", 0, 100)
 
-    if st.button("Predict Mortality"):
-
+    if st.button("Predict"):
         baux = age + burn
-
-        patient = pd.DataFrame(
-            [[age, burn, baux]],
-            columns=["Age", "Burn", "Baux"]
-        )
-
-        survive_prob = model.predict_proba(patient)[0][1]
-        death_prob = 1 - survive_prob
+        patient = pd.DataFrame([[age,burn,baux]], columns=["Age","Burn","Baux"])
+        p_survive = model.predict_proba(patient)[0][1]
+        p_die = 1 - p_survive
 
         st.subheader("Prediction")
-
         st.write("Baux Score:", baux)
-        st.write("Mortality Risk:", round(death_prob * 100, 2), "%")
-        st.write("Survival Probability:", round(survive_prob * 100, 2), "%")
+        st.write("Mortality Risk:", round(p_die*100,2), "%")
+        st.write("Survival Probability:", round(p_survive*100,2), "%")
