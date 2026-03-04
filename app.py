@@ -11,30 +11,19 @@ file = st.file_uploader("Upload burn data Excel", type=["xlsx"])
 
 if file is not None:
 
-    df = pd.read_excel(file)
+    df = pd.read_excel(file, header=2)
 
-    st.write("Detected columns:", df.columns)
-
-    # rename columns depending on your sheet
-    rename_map = {}
-
-    for c in df.columns:
-        name = c.lower()
-
-        if "burn" in name:
-            rename_map[c] = "Burn"
-
-        if "age" in name:
-            rename_map[c] = "Age"
-
-        if "out" in name:
-            rename_map[c] = "Outcome"
-
-    df = df.rename(columns=rename_map)
-
-    if not {"Burn","Age","Outcome"}.issubset(df.columns):
-        st.error("Required columns not found in Excel")
-        st.stop()
+    # rename columns according to your sheet
+    df.columns = [
+        "Index",
+        "Name",
+        "Burn",
+        "Age",
+        "Sex",
+        "DOA",
+        "DOD",
+        "Outcome"
+    ]
 
     df = df[["Burn","Age","Outcome"]]
 
@@ -71,7 +60,8 @@ if file is not None:
 
         baux = age + burn
 
-        patient = pd.DataFrame([[age,burn,baux]],columns=["Age","Burn","Baux"])
+        patient = pd.DataFrame([[age,burn,baux]],
+                               columns=["Age","Burn","Baux"])
 
         survive = model.predict_proba(patient)[0][1]
         death = 1 - survive
