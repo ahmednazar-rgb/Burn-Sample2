@@ -11,7 +11,7 @@ from sklearn.metrics import roc_auc_score
 st.set_page_config(page_title="Burn Mortality Predictor")
 
 st.title("Burn Center Mortality Predictor")
-st.write("Prediction based on Age and Burn %. Models separated by age group.")
+st.write("Prediction based on Age and Burn %. Pediatric separated, Adult+Elderly combined.")
 
 uploaded_file = st.file_uploader("Upload burn data Excel file", type=["xlsx"])
 
@@ -32,24 +32,20 @@ df["Outcome"] = df["Outcome"].astype(int)
 df["Age"] = pd.to_numeric(df["Age"], errors="coerce")
 df["Burn"] = pd.to_numeric(df["Burn"], errors="coerce")
 
-# Convert Excel fraction percentages to real percent
+# Convert Excel % fractions to true %
 df["Burn"] = df["Burn"] * 100
 
-# Drop invalid rows
 df = df.dropna(subset=["Age","Burn","Outcome"])
 
-# Keep logical ranges
 df = df[(df["Burn"] >= 0) & (df["Burn"] <= 100)]
 df = df[(df["Age"] >= 0) & (df["Age"] <= 120)]
 
-# Age group function
+# Age groups (Adult + Elderly merged)
 def age_group(age):
     if age < 18:
         return "Pediatric (<18)"
-    elif age <= 60:
-        return "Adult (18–60)"
     else:
-        return "Elderly (>60)"
+        return "Adult + Elderly (18+)"
 
 df["AgeGroup"] = df["Age"].apply(age_group)
 
@@ -60,7 +56,7 @@ st.write("Survivals:", (df["Outcome"] == 1).sum())
 
 selected_group = st.selectbox(
     "Select age group model",
-    ["Pediatric (<18)", "Adult (18–60)", "Elderly (>60)"]
+    ["Pediatric (<18)", "Adult + Elderly (18+)"]
 )
 
 group_df = df[df["AgeGroup"] == selected_group].copy()
@@ -95,12 +91,11 @@ model = Pipeline([
 
 model.fit(X_train, y_train)
 
+# Age slider limits
 if selected_group == "Pediatric (<18)":
     age_min, age_max = 0, 17
-elif selected_group == "Adult (18–60)":
-    age_min, age_max = 18, 60
 else:
-    age_min, age_max = 61, 120
+    age_min, age_max = 18, 120
 
 st.subheader("Prediction")
 
