@@ -20,25 +20,29 @@ if uploaded_file is None:
 
 df = pd.read_excel(uploaded_file)
 
-# Rename columns from dataset
+# Rename columns
 df.columns = ["ID","Name","Burn","Age","Sex","DOA","DOD","Outcome"]
 
-# Clean outcome column
+# Clean outcome
 df["Outcome"] = df["Outcome"].astype(str).str.strip()
 df = df[df["Outcome"].isin(["0","1"])]
-
-# Convert types
 df["Outcome"] = df["Outcome"].astype(int)
+
+# Convert numeric columns
 df["Age"] = pd.to_numeric(df["Age"], errors="coerce")
 df["Burn"] = pd.to_numeric(df["Burn"], errors="coerce")
 
+# Convert Excel fraction percentages to real percent
+df["Burn"] = df["Burn"] * 100
+
+# Drop invalid rows
 df = df.dropna(subset=["Age","Burn","Outcome"])
 
-# Convert burn fraction to %
-if df["Burn"].max() <= 1:
-    df["Burn"] = df["Burn"] * 100
+# Keep logical ranges
+df = df[(df["Burn"] >= 0) & (df["Burn"] <= 100)]
+df = df[(df["Age"] >= 0) & (df["Age"] <= 120)]
 
-# Create age groups
+# Age group function
 def age_group(age):
     if age < 18:
         return "Pediatric (<18)"
@@ -54,17 +58,23 @@ st.write("Total patients:", len(df))
 st.write("Deaths:", (df["Outcome"] == 0).sum())
 st.write("Survivals:", (df["Outcome"] == 1).sum())
 
-# Age group selection
 selected_group = st.selectbox(
     "Select age group model",
     ["Pediatric (<18)", "Adult (18–60)", "Elderly (>60)"]
 )
 
-group_df = df[df["AgeGroup"] == selected_group]
+group_df = df[df["AgeGroup"] == selected_group].copy()
 
 st.write("Patients in selected group:", len(group_df))
 
-# Prepare model data
+if len(group_df) < 10:
+    st.error("Not enough data in this age group.")
+    st.stop()
+
+if group_df["Outcome"].nunique() < 2:
+    st.error("Only one outcome present. Model cannot train.")
+    st.stop()
+
 X = group_df[["Age","Burn"]]
 y = group_df["Outcome"]
 
@@ -85,7 +95,6 @@ model = Pipeline([
 
 model.fit(X_train, y_train)
 
-# Determine age range for slider
 if selected_group == "Pediatric (<18)":
     age_min, age_max = 0, 17
 elif selected_group == "Adult (18–60)":
