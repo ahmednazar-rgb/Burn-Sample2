@@ -11,7 +11,7 @@ from sklearn.metrics import roc_auc_score
 st.set_page_config(page_title="Burn Mortality Predictor")
 
 st.title("Burn Center Mortality Predictor")
-st.write("Prediction based on Age and Burn %. Pediatric separated, Adult+Elderly combined.")
+st.write("Prediction based on Age and Burn %. Age groups: <10, 10–17, 18+")
 
 uploaded_file = st.file_uploader("Upload burn data Excel file", type=["xlsx"])
 
@@ -20,19 +20,15 @@ if uploaded_file is None:
 
 df = pd.read_excel(uploaded_file)
 
-# Rename columns
 df.columns = ["ID","Name","Burn","Age","Sex","DOA","DOD","Outcome"]
 
-# Clean outcome
 df["Outcome"] = df["Outcome"].astype(str).str.strip()
 df = df[df["Outcome"].isin(["0","1"])]
 df["Outcome"] = df["Outcome"].astype(int)
 
-# Convert numeric columns
 df["Age"] = pd.to_numeric(df["Age"], errors="coerce")
 df["Burn"] = pd.to_numeric(df["Burn"], errors="coerce")
 
-# Convert Excel % fractions to true %
 df["Burn"] = df["Burn"] * 100
 
 df = df.dropna(subset=["Age","Burn","Outcome"])
@@ -40,10 +36,11 @@ df = df.dropna(subset=["Age","Burn","Outcome"])
 df = df[(df["Burn"] >= 0) & (df["Burn"] <= 100)]
 df = df[(df["Age"] >= 0) & (df["Age"] <= 120)]
 
-# Age groups (Adult + Elderly merged)
 def age_group(age):
-    if age < 18:
-        return "Pediatric (<18)"
+    if age < 10:
+        return "Pediatric (<10)"
+    elif age < 18:
+        return "Pediatric (10–17)"
     else:
         return "Adult + Elderly (18+)"
 
@@ -56,7 +53,7 @@ st.write("Survivals:", (df["Outcome"] == 1).sum())
 
 selected_group = st.selectbox(
     "Select age group model",
-    ["Pediatric (<18)", "Adult + Elderly (18+)"]
+    ["Pediatric (<10)", "Pediatric (10–17)", "Adult + Elderly (18+)"]
 )
 
 group_df = df[df["AgeGroup"] == selected_group].copy()
@@ -91,9 +88,10 @@ model = Pipeline([
 
 model.fit(X_train, y_train)
 
-# Age slider limits
-if selected_group == "Pediatric (<18)":
-    age_min, age_max = 0, 17
+if selected_group == "Pediatric (<10)":
+    age_min, age_max = 0, 9
+elif selected_group == "Pediatric (10–17)":
+    age_min, age_max = 10, 17
 else:
     age_min, age_max = 18, 120
 
