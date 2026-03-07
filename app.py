@@ -11,7 +11,7 @@ from sklearn.metrics import roc_auc_score
 st.set_page_config(page_title="Burn Mortality Predictor")
 
 st.title("Burn Center Mortality Predictor")
-st.write("Predicts mortality using Age and Burn %.")
+st.write("Predicts mortality using Age and Burn %. Models are separated by age group.")
 
 uploaded_file = st.file_uploader("Upload burn data Excel file", type=["xlsx"])
 
@@ -20,7 +20,7 @@ if uploaded_file is None:
 
 df = pd.read_excel(uploaded_file)
 
-# Rename columns from the sheet
+# Rename columns from dataset
 df.columns = ["ID","Name","Burn","Age","Sex","DOA","DOD","Outcome"]
 
 # Remove unknown outcomes
@@ -38,11 +38,37 @@ df = df.dropna(subset=["Age","Burn","Outcome"])
 if df["Burn"].max() <= 1:
     df["Burn"] = df["Burn"] * 100
 
-X = df[["Age","Burn"]]
-y = df["Outcome"]
+# Create age groups
+def age_group(age):
+    if age < 18:
+        return "Pediatric (<18)"
+    elif age <= 60:
+        return "Adult (18–60)"
+    else:
+        return "Elderly (>60)"
+
+df["AgeGroup"] = df["Age"].apply(age_group)
+
+st.subheader("Dataset Summary")
+st.write("Total patients:", len(df))
+st.write("Deaths:", (df["Outcome"]==0).sum())
+st.write("Survivals:", (df["Outcome"]==1).sum())
+
+# Dropdown for model selection
+selected_group = st.selectbox(
+    "Select age group model",
+    ["Pediatric (<18)", "Adult (18–60)", "Elderly (>60)"]
+)
+
+group_df = df[df["AgeGroup"] == selected_group]
+
+st.write("Patients in selected group:", len(group_df))
+
+X = group_df[["Age","Burn"]]
+y = group_df["Outcome"]
 
 X_train, X_test, y_train, y_test = train_test_split(
-    X,y,test_size=0.25,random_state=42
+    X, y, test_size=0.25, random_state=42
 )
 
 model = Pipeline([
@@ -51,25 +77,20 @@ model = Pipeline([
     ("model", LogisticRegression())
 ])
 
-model.fit(X_train,y_train)
-
-st.subheader("Dataset Summary")
-st.write("Patients used:",len(df))
-st.write("Deaths:",(y==0).sum())
-st.write("Survivals:",(y==1).sum())
+model.fit(X_train, y_train)
 
 st.subheader("Prediction")
 
 age = st.number_input("Age",0,120,30)
 burn = st.slider("Burn %",0.0,100.0,30.0)
 
-input_data = pd.DataFrame([[age,burn]],columns=["Age","Burn"])
+input_data = pd.DataFrame([[age,burn]], columns=["Age","Burn"])
 
 prob_survival = model.predict_proba(input_data)[0][1]
-prob_death = 1-prob_survival
+prob_death = 1 - prob_survival
 
-st.write("Mortality risk:",round(prob_death*100,2),"%")
-st.write("Survival probability:",round(prob_survival*100,2),"%")
+st.write("Mortality risk:", round(prob_death*100,2), "%")
+st.write("Survival probability:", round(prob_survival*100,2), "%")
 
-auc = roc_auc_score(y_test,model.predict_proba(X_test)[:,1])
-st.write("Model AUC:",round(auc,3))
+auc = roc_auc_score(y_test, model.predict_proba(X_test)[:,1])
+st.write("Model AUC:", round(auc,3))
